@@ -1,3 +1,12 @@
+/*
+  Rui Santos guides https://RandomNerdTutorials.com/
+  
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files.
+  
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+*/
 
 #define DHTTYPE DHT11
 #define ESPALEXA_ASYNC //it is important to define this before #include <Espalexa.h>!
@@ -10,10 +19,6 @@
 #include <ESP32Servo.h>
 #endif
 
-
-#include <WiFi.h>
-#include <AsyncTCP.h>
-
 #ifdef ESP32
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -25,6 +30,7 @@
 #include <Arduino.h>
 #include <Adafruit_Sensor.h>
 #include "DHT.h"
+#include "time.h"
 #include <ESPAsyncWebServer.h>
 
 // Instanciate servos
@@ -41,6 +47,11 @@ const int LIGHT2PIN = 27;
 const int SOILPIN = 32;
 const int LDRPIN = 36;
 
+const char* MACAddress = "24:6f:28:b0:15:50";
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = -21600; // -6 hours CST
+const int   daylightOffset_sec = 0;
+
 // Variables
 float temperature = 30;
 float humidity = 40;
@@ -50,6 +61,7 @@ int waterlevel = 70;
 
 // prototypes
 boolean connectWifi();
+void printLocalTime();
 
 //callback functions
 void ledChanged(uint8_t brightness);
@@ -67,7 +79,9 @@ String Device_4_Name = "Light2";
 
 // Replace with your network credentials
 const char* ssid = "SpectrumSetup-48";
-const char* password = "wittyberry493";
+const char* password = "wittyberry493"; // 493
+const char* APssid = "Greenhouse_Down";
+const char* APpassword = "password";
 boolean wifiConnected = false;
 
 // Starts
@@ -149,12 +163,14 @@ String readWaterLevel() {
     return String(w);
   }
 }
-
+//fa-thermometer-empty -half -full
+//fa-solid fa-island-tropical
+// blue 0x green 0x red 0x
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css" integrity="sha384-DyZ88mC6Up2uqS4h/KRgHuoeGwBcD4Ng9SiP4dIRy0EXTlnuz47vAwmeGwVChigm" crossorigin="anonymous"/>
   <style>
     html {
      font-family: Arial;
@@ -175,7 +191,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <body>
   <h2>ESP32 Async Greenhouse Server</h2>
   <p>
-    <i class="fas fa-thermometer-half" style="color:#059e8a;"></i> 
+    <i class="fas fa-thermometer-half" style="color:#059e8a;"></i>
     <span class="dht-labels">Temperature</span> 
     <span id="temperature">%TEMPERATURE%</span>
     <sup class="units">&deg;C</sup>
@@ -187,22 +203,22 @@ const char index_html[] PROGMEM = R"rawliteral(
     <sup class="units">&percnt;</sup>
   </p>
   <p>
-    <i class="fas fa-tint" style="color:#00add6;"></i> 
+    <i class="fas fa-fire-alt" style="color:#ff2a04;"></i> 
     <span class="dht-labels">HeatIndex</span>
     <span id="heatindex">%HEATINDEX%</span>
-    <sup class="units">&deg;</sup>
+    <sup class="units">&deg;C</sup>
   </p>
   <p>
-    <i class="fas fa-tint" style="color:#00add6;"></i> 
+    <i class="fas fa-cloud-sun" style="color:#ffd966;"></i> 
     <span class="dht-labels">LightLevel</span>
     <span id="lightlevel">%LIGHTLEVEL%</span>
-    <sup class="units">&percnt;</sup>
+    <sup class="units">Lux</sup>
   </p>
   <p>
-    <i class="fas fa-tint" style="color:#00add6;"></i> 
+    <i class="fas fa-fill-drip" style="color:#6fa8dc;"></i> 
     <span class="dht-labels">WaterLevel</span>
     <span id="waterlevel">%WATERLEVEL%</span>
-    <sup class="units">&percnt;</sup>
+    <sup class="units">High(3000)Dry</sup>
   </p>
 </body>
 <script>
@@ -332,6 +348,10 @@ void setup() {
     server.on("/waterlevel", HTTP_GET, [](AsyncWebServerRequest *request){
       request->send_P(200, "text/plain", readWaterLevel().c_str());
     });
+    
+    // Init and get the time
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    printLocalTime();
 	
     // Define your devices here.
     espalexa.addDevice(Device_0_Name, ledChanged);			// LED
@@ -347,13 +367,45 @@ void setup() {
   }
   else
   {
-    while (1)
-    {
       Serial.println("Cannot connect to WiFi. Please check data and reset the ESP.");
-      delay(5000);
-    }
   }
+}
 
+void printLocalTime() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y");
+  Serial.println(&timeinfo, "%H:%M:%S");
+  /*
+  Serial.print("Day of week: ");
+  Serial.println(&timeinfo, "%A");
+  Serial.print("Month: ");
+  Serial.println(&timeinfo, "%B");
+  Serial.print("Day of Month: ");
+  Serial.println(&timeinfo, "%d");
+  Serial.print("Year: ");
+  Serial.println(&timeinfo, "%Y");
+  Serial.print("Hour: ");
+  Serial.println(&timeinfo, "%H");
+  Serial.print("Hour (12 hour format): ");
+  Serial.println(&timeinfo, "%I");
+  Serial.print("Minute: ");
+  Serial.println(&timeinfo, "%M");
+  Serial.print("Second: ");
+  Serial.println(&timeinfo, "%S");
+
+  Serial.println("Time variables");
+  char timeHour[3];
+  strftime(timeHour,3, "%H", &timeinfo);
+  Serial.println(timeHour);
+  char timeWeekDay[10];
+  strftime(timeWeekDay,10, "%A", &timeinfo);
+  Serial.println(timeWeekDay);
+  Serial.println();
+  */
 }
 
 //our callback functions
@@ -472,11 +524,16 @@ boolean connectWifi()
   }
   else {
     Serial.println("Connection failed.");
+    Serial.println("Attempting AP mode.");
+    WiFi.softAP(APssid, APpassword);
+    Serial.print("AP IP address: ");
+    Serial.println(WiFi.softAPIP());
+    return true;
   }
   return state;
 }
 
 void loop() {
    espalexa.loop();
-   delay(1);
+   delay(100);
 }
